@@ -34,23 +34,28 @@ DOCS = {
     "account": "Pro accounts include priority support.",
 }
 
-class SupportRespoinse(BaseModel):
-    stage: str = Field(description="The stage of the support process, e.g., 'initial', 'follow-up', 'resolution'.")
-    successful:bool
+
+class SupportResponse(BaseModel):
+    stage: str = Field(description="Stage like answered, refunded or rejected")
+    successful: bool
     message: str
+
 
 @tool
 def search_knowledge_base(query: str) -> str:
     """search support docs"""
-    for title,body in DOCS.items():
+    for title, body in DOCS.items():
         if title in query.lower():
             return body
-    return "No matching support article found"
+    return "No mtahcing support articles found."
+
 
 @tool
 def lookup_order(order_id: str) -> dict:
     """lookup order in database by ID"""
-    return MOCK_DB["orders"].get(order_id, {"error": "Order not found"})
+    return MOCK_DB["orders"].get(order_id, {"error": "order not found"})
+
+
 @tool(approval_required=True)
 def process_refund(order_id: str, amount: float) -> str:
     """request a refund, pause for human approvla think before you run this"""
@@ -84,3 +89,37 @@ support_agent = Agent(
     guardrails=[Guardrail(safe_support_request, position=Position.INPUT, on_fail=OnFail.RAISE)],
     max_turns=10
 )
+
+def run_interactive(prompt: str) -> None:
+    with AgentRuntime() as runtime:
+        handle = start(support_agent, prompt, runtime=runtime)
+        stream = handle.stream()
+
+        order_id, amount = None, None
+        for event in stream:
+            if event.type == EventType.TOOL_CALL and event.args:
+                order_id = event.args.get("order_id") or order_id
+            elif event.type == EventType.TOOL_RESULT and isinstance(event.result, dict):
+                amount = event.result.get("total") or amount
+            elif event.type == EventType.WAITING:
+                print(f"\nApproval required: refund ${amount:.2f} for order {order_id}")
+                decision = input("Approve? (y/n): ").lower().strip()
+                if decision == "y":
+                    handle.approve()
+                else:
+                    handle.reject("user rejected")
+        
+        result = stream.get_result()
+        output = result.output.get("result")
+        print(f"\n{output}\n")
+
+
+if __name__ == "__main__":
+    print("Support bot starting....")
+    while True:
+        prompt = input("You: ").strip()
+        if prompt.lower() == "q":
+            break
+        if not prompt:
+            continue
+        run_interactive(prompt)
