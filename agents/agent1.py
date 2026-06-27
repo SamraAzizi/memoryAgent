@@ -2,12 +2,15 @@ import logging
 from datetime import datetime
 
 from dotenv import load_dotenv
-from  agentspan.agents import Agent, AgentRunTime,  ConversationMemory
+from agentspan.agents import Agent, AgentRuntime, ConversationMemory, run  # Added 'run'
+
+import os
+os.environ["AGENTSPAN_ENABLED"] = "false"  # Add this line
 
 load_dotenv()
 logging.basicConfig(level=logging.WARNING)
-logging.getLogger("agentspan").setLevel(logging.WARNING)
-logging.getLogger("conductor").setLevel(logging.WARNING)
+logging.getLogger("agentspan").setLevel(logging.ERROR)  # Changed to ERROR
+logging.getLogger("conductor").setLevel(logging.ERROR)  # Changed to ERROR
 
 
 def get_current_time() -> str:
@@ -15,16 +18,14 @@ def get_current_time() -> str:
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 
-
 conversation_memory = ConversationMemory(max_messages=50)
 
 assistant = Agent(
     name="personal-Assistant",
-    model="openai/gpt-4",
+    model="ollama/llama3",
     instructions="You are a helpful personal assistant. You will be given a task and you should ask questions to clarify the task if needed. Once you have enough information, you should provide a detailed plan to complete the task.",
     tools=[get_current_time],
-    memory=converstion_memory
-
+    memory=conversation_memory
 )
 
 if __name__ == "__main__":
@@ -39,7 +40,8 @@ if __name__ == "__main__":
                 continue
 
             result = run(assistant, prompt, runtime=runtime)
-            readable_result = result.output.get("result")
+            # Fix this line too - handle the output properly
+            readable_result = result.output if isinstance(result.output, str) else result.output.get("result", str(result.output))
             conversation_memory.add_user_message(prompt)
             conversation_memory.add_assistant_message(readable_result)
 
